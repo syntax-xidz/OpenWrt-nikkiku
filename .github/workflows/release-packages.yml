@@ -1,16 +1,12 @@
-name: release-packages
+name: build-packages
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - v*
 
 jobs:
-  release:
-    name: ${{ matrix.arch }}-${{ matrix.branch }} release
+  build:
+    name: ${{ matrix.arch }}-${{ matrix.branch }} build
     runs-on: ubuntu-latest
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -50,84 +46,16 @@ jobs:
       - name: checkout
         uses: actions/checkout@v4
 
-      # 🔧 PAKSA FEEDS OPENWRT KE GITHUB (hindari Codeberg TLS error)
-      - name: force openwrt feeds github
-        run: |
-          sed -i 's|codeberg.org/openwrt/openwrt.git|github.com/openwrt/openwrt.git|g' feeds.conf.default || true
-          sed -i 's|codeberg.org/openwrt|github.com/openwrt|g' feeds.conf.default || true
-
       - name: build
         uses: openwrt/gh-action-sdk@main
         env:
-          ARCH: ${{ matrix.arch }}
-          BRANCH: ${{ matrix.branch }}
+          ARCH: ${{ matrix.arch }}-${{ matrix.branch }}
           FEEDNAME: nikki
           PACKAGES: luci-app-nikki
-          INDEX: 1
-          KEY_BUILD: ${{ secrets.KEY_BUILD }}
-          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
           NO_REFRESH_CHECK: true
-          IGNORE_CHOWN_ERROR: true
-
-      # 🛡️ COMPRESS AMAN (skip jika paket tidak ada)
-      - name: compress
-        run: |
-          PKGDIR="bin/packages/${{ matrix.arch }}/nikki"
-
-          if [ ! -d "$PKGDIR" ]; then
-            echo "No nikki package for ${{ matrix.arch }} ${{ matrix.branch }}, skipping compress"
-            exit 0
-          fi
-
-          tar -c -z -f nikki_${{ matrix.arch }}-${{ matrix.branch }}.tar.gz -C "$PKGDIR" .
-          mkdir -p public/${{ matrix.branch }}/${{ matrix.arch }}
-          mv "$PKGDIR" public/${{ matrix.branch }}/${{ matrix.arch }}
-          tar -c -z -f feed_nikki_${{ matrix.arch }}-${{ matrix.branch }}.tar.gz public/${{ matrix.branch }}/${{ matrix.arch }}
-
-      - if: github.event_name == 'push' && startsWith(github.ref_name, 'v')
-        name: release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            nikki_${{ matrix.arch }}-${{ matrix.branch }}.tar.gz
 
       - name: upload
         uses: actions/upload-artifact@v4
         with:
-          name: feed_nikki_${{ matrix.arch }}-${{ matrix.branch }}
-          path: feed_nikki_${{ matrix.arch }}-${{ matrix.branch }}.tar.gz
-
-  feed:
-    needs: release
-    name: feed
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: download
-        uses: actions/download-artifact@v4
-        with:
-          pattern: feed_nikki_*
-          merge-multiple: true
-
-      - name: uncompress
-        run: |
-          for file in feed_nikki_*.tar.gz; do
-            tar -x -z -f "$file"
-          done
-
-      - name: prepare
-        run: |
-          echo "${{ secrets.KEY_BUILD_PUB }}" > public/key-build.pub
-          echo "${{ secrets.PUBLIC_KEY }}" > public/public-key.pem
-          tree --dirsfirst --sort name -P '*.apk|*.ipk' --prune --noreport \
-            -H "" -T "Nikki's Feed" --charset utf-8 \
-            -o public/index.html public
-          sed -i '/<p class="VERSION">/,/<\/p>/d' public/index.html
-
-      - name: feed
-        uses: cloudflare/wrangler-action@v3
-        with:
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          command: pages deploy public --project-name=nikkinikki
-          
+          name: nikki_${{ matrix.arch }}-${{ matrix.branch }}
+          path: bin/packages/${{ matrix.arch }}/nikki
