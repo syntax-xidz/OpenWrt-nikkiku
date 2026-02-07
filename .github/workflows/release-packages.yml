@@ -2,6 +2,11 @@ name: release-packages
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g., v1.0.1) - must be provided, will override Makefile version'
+        required: true
+        type: string
   push:
     tags:
       - v*
@@ -31,6 +36,30 @@ jobs:
       - name: checkout
         uses: actions/checkout@v4
 
+      - name: Extract version from Makefile
+        run: |
+          PKG_VERSION=$(grep '^PKG_VERSION.*:=' luci-app-nikki/Makefile | sed 's/.*:= *//' | tr -d ' "')
+          if [ -z "$PKG_VERSION" ]; then
+            echo "Warning: PKG_VERSION not found or empty in luci-app-nikki/Makefile"
+            PKG_VERSION="unknown"
+          fi
+          echo "PKG_VERSION=$PKG_VERSION" >> $GITHUB_ENV
+          echo "Extracted PKG_VERSION: $PKG_VERSION"
+
+      - name: Determine tag name
+        id: tag
+        run: |
+          if [ "${{ github.event.inputs.tag }}" != "" ]; then
+            echo "tag_name=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+            echo "Using manual input tag: ${{ github.event.inputs.tag }}"
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "tag_name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "Using pushed tag: ${{ github.ref_name }}"
+          else
+            echo "tag_name=v${{ env.PKG_VERSION }}" >> $GITHUB_OUTPUT
+            echo "Using Makefile version: v${{ env.PKG_VERSION }}"
+          fi
+
       - name: build
         uses: openwrt/gh-action-sdk@main
         env:
@@ -49,12 +78,15 @@ jobs:
           mv bin/packages/${{ matrix.arch }}/nikki public/${{ matrix.branch }}/${{ matrix.arch }}
           tar -c -z -f feed_nikki_${{ matrix.arch }}-${{ matrix.branch }}.tar.gz public/${{ matrix.branch }}/${{ matrix.arch }}
 
-      - if: github.event_name == 'push' && startsWith(github.ref_name, 'v')
-        name: release
+      - name: release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.tag.outputs.tag_name }}
           files: |
             nikki_${{ matrix.arch }}-${{ matrix.branch }}.tar.gz
+          generate_release_notes: false
+          draft: false
+          prerelease: false
 
       - name: upload
         uses: actions/upload-artifact@v4
