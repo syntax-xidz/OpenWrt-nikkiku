@@ -116,10 +116,3 @@ jobs:
           echo "${{ secrets.PUBLIC_KEY }}" > public/public-key.pem
           tree --dirsfirst --sort name -P '*.apk|*.ipk' --prune --noreport -H "" -T "Nikki's Feed" --charset utf-8 -o public/index.html public
           sed -i '/<p class="VERSION">/,/<\/p>/d' public/index.html
-
-      - name: feed
-        uses: cloudflare/wrangler-action@v3
-        with:
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          command: pages deploy public --project-name=nikkinikki
