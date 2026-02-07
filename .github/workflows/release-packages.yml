@@ -19,6 +19,9 @@ jobs:
           - aarch64_cortex-a72
           - aarch64_cortex-a76
           - aarch64_generic
+          - arm_arm1176jzf-s_vfp
+          - arm_cortex-a7_neon-vfpv4
+          - i386_pentium4
           - x86_64
         branch:
           - openwrt-24.10
